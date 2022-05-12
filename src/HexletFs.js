@@ -1,41 +1,41 @@
 import path from 'path';
 import Tree from './Tree.js';
 
-const getPathParts = (filepath) => filepath.split(path.sep).filter((part) => part);
+import Dir from './Dir.js';
+import File from './File.js';
+
+const getPathParts = (filepath) => filepath.split(path.sep).filter((part) => part !== '');
 
 export default class {
   constructor() {
-    this.tree = new Tree('/', { type: 'dir' });
+    this.tree = new Tree('/', new Dir('/'));
   }
 
-  isDirectory(filepath) {
-    const subtree = this.findNode(filepath);
-    return subtree?.getMeta().type === 'dir';
-  }
-
-  isFile(filepath) {
-    const subtree = this.findNode(filepath);
-    return subtree?.getMeta().type === 'file';
-  }
-
-  mkdirSync(filepath) {
-    const parsedPath = path.parse(filepath);
-    if (this.isDirectory(parsedPath.dir)) {
-      const subtree = this.findNode(parsedPath.dir);
-      subtree.addChild(parsedPath.base, { type: 'dir' });
-    }
+  statSync(filepath) {
+    const current = this.findNode(filepath);
+    return current.getMeta().getStats();
   }
 
   touchSync(filepath) {
-    const parsedPath = path.parse(filepath);
-    if (this.isDirectory(parsedPath.dir)) {
-      const subtree = this.findNode(parsedPath.dir);
-      subtree.addChild(parsedPath.base, { type: 'file' });
-    }
+    const { dir, base } = path.parse(filepath);
+    return this.findNode(dir).addChild(base, new File(base));
+  }
+
+  mkdirSync(filepath) {
+    const { dir, base } = path.parse(filepath);
+    return this.findNode(dir).addChild(base, new Dir(base));
   }
 
   findNode(filepath) {
     const parts = getPathParts(filepath);
     return parts.length === 0 ? this.tree : this.tree.getDeepChild(parts);
+  }
+
+  isFile(filepath) {
+    return this.statSync(filepath).isFile();
+  }
+
+  isDirectory(filepath) {
+    return this.statSync(filepath).isDirectory();
   }
 }
