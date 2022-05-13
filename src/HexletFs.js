@@ -1,4 +1,5 @@
 import path from 'path';
+import errors from 'errno';
 import Tree from './Tree.js';
 
 import Dir from './Dir.js';
@@ -11,76 +12,120 @@ export default class {
     this.tree = new Tree('/', new Dir('/'));
   }
 
-  statSync(filepath) {
-    const current = this.findNode(filepath);
+  statSync(nodepath) {
+    const current = this.findNode(nodepath);
     if (!current) {
-      return null;
+      return [null, errors.code.ENOENT];
     }
-    return current.getMeta().getStats();
+    return [current.getMeta().getStats(), null];
   }
 
-  mkdirSync(filepath) {
-    const current = this.findNode(filepath);
+  mkdirSync(dirpath) {
+    const current = this.findNode(dirpath);
     if (current) {
-      return false;
+      return [null, errors.code.EEXIST];
     }
-    const { base, dir } = path.parse(filepath);
+    const { base, dir } = path.parse(dirpath);
     const parent = this.findNode(dir);
-    if (!parent || !parent.getMeta().isDirectory()) {
-      return false;
+    if (!parent) {
+      return [null, errors.code.ENOENT];
     }
-    parent.addChild(base, new Dir(base));
-    return true;
+    if (!parent.getMeta().isDirectory()) {
+      return [null, errors.code.ENOTDIR];
+    }
+    return [parent.addChild(base, new Dir(base)), null];
   }
 
-  mkdirpSync(filepath) {
-    const current = this.findNode(filepath);
+  mkdirpSync(dirpath) {
+    const current = this.findNode(dirpath);
     if (!current) {
-      const { dir } = path.parse(filepath);
+      const { dir } = path.parse(dirpath);
       this.mkdirpSync(dir);
     } else if (!current.getMeta().isDirectory()) {
-      return false;
+      return [null, errors.code.ENOTDIR];
     }
-    return this.mkdirSync(filepath);
+    return [this.mkdirSync(dirpath), null];
   }
 
-  readdirSync(filepath) {
-    const current = this.findNode(filepath);
-    if (!current || !current.getMeta().isDirectory()) {
-      return false;
+  readdirSync(dirpath) {
+    const current = this.findNode(dirpath);
+    if (!current) {
+      return [null, errors.code.ENOENT];
     }
-    return current.getChildren()
-      .map((child) => child.getKey());
+    if (!current.getMeta().isDirectory()) {
+      return [null, errors.code.ENOTDIR];
+    }
+    return [current.getChildren().map((child) => child.getKey()), null];
   }
 
   touchSync(filepath) {
     const { base, dir } = path.parse(filepath);
     const parent = this.findNode(dir);
     if (!parent) {
-      return false;
+      return [null, errors.code.ENOENT];
     }
     if (!parent.getMeta().isDirectory()) {
-      return false;
+      return [null, errors.code.ENOTDIR];
     }
-    parent.addChild(base, new File(base, ''));
-    return true;
+    return [parent.addChild(base, new File(base, '')), null];
   }
 
-  rmdirSync(filepath) {
-    const { base } = path.parse(filepath);
+  rmdirSync(dirpath) {
+    const { base } = path.parse(dirpath);
+    const current = this.findNode(dirpath);
+    if (!current) {
+      return [null, errors.code.ENOENT];
+    }
+    if (!current.getMeta().isDirectory()) {
+      return [null, errors.code.ENOTDIR];
+    }
+    if (current.hasChildren()) {
+      return [null, errors.code.ENOTEMPTY];
+    }
+    return [current.getParent().removeChild(base), null];
+  }
+
+  unlinkSync(filepath) {
     const current = this.findNode(filepath);
     if (!current) {
-      return false;
+      return [null, errors.code.ENOENT];
     }
-    if (!current.getMeta().isDirectory() || current.hasChildren()) {
-      return false;
+    if (!current.getMeta().isFile()) {
+      return [null, errors.code.EPERM];
     }
-    current.getParent().removeChild(base);
-    return true;
+    return [current.getParent().removeChild(current.getKey()), null];
   }
 
-  findNode(filepath) {
-    const parts = getPathParts(filepath);
+  writeFileSync(filepath, content) {
+    const current = this.findNode(filepath);
+    if (current && current.getMeta().isDirectory()) {
+      return [null, errors.code.EISDIR];
+    }
+    const { base, dir } = path.parse(filepath);
+    const parent = this.findNode(dir);
+    if (!parent) {
+      return [null, errors.code.ENOENT];
+    }
+    if (!parent.getMeta().isDirectory()) {
+      return [null, errors.code.ENOTDIR];
+    }
+    return [parent.addChild(base, new File(base, content)), null];
+  }
+
+  readFileSync(filepath) {
+    const current = this.findNode(filepath);
+    if (!current) {
+      return [null, errors.code.ENOENT];
+    }
+    if (current.getMeta().isDirectory()) {
+      return [null, errors.code.EISDIR];
+    }
+    return [current.getMeta().getBody(), null];
+  }
+
+  // ok
+  findNode(nodepath) {
+    const parts = getPathParts(nodepath);
     return parts.length === 0 ? this.tree : this.tree.getDeepChild(parts);
   }
 }
